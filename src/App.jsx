@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import Board from "./components/Game/Board";
 import GameSidebar from "./components/GameSidebar";
 import Modal from "./components/UI/Modal";
+import HomePage from "./components/HomePage";
+import WaitingRoom from "./components/WaitingRoom";
 import { useChessGame } from "./hooks/useChessGame";
 import { useChessAudio } from "./hooks/useChessAudio";
 
@@ -18,6 +20,9 @@ function App() {
     resignGame,
     abortGame,
     history,
+    gameState,
+    startGame,
+    leaveGame,
   } = useChessGame();
   const { playAudio } = useChessAudio();
 
@@ -27,7 +32,7 @@ function App() {
 
   // Timer Logic
   useEffect(() => {
-    if (gameOver) return;
+    if (gameOver || gameState !== "playing") return;
 
     const timer = setInterval(() => {
       if (turn === "w") {
@@ -38,7 +43,7 @@ function App() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [turn, gameOver]);
+  }, [turn, gameOver, gameState]);
 
   // Check for timeout
   useEffect(() => {
@@ -79,7 +84,8 @@ function App() {
   const captured = getCapturedPieces(fen);
 
   const handleNewGame = () => {
-    window.location.reload();
+    // window.location.reload(); // Old way
+    leaveGame(); // Go back to home
   };
 
   const getGameOverMessage = () => {
@@ -91,6 +97,14 @@ function App() {
     if (gameOverReason === "aborted") return "Game aborted.";
     return "Checkmate!";
   };
+
+  if (gameState === "home") {
+    return <HomePage onStartGame={startGame} />;
+  }
+
+  if (gameState === "waiting") {
+    return <WaitingRoom onCancel={leaveGame} />;
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 font-sans">

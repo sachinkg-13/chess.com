@@ -16,45 +16,89 @@ const io = new Server(server, {
   },
 });
 
-const chess = new Chess();
+let chess = new Chess();
 let players = {};
 let currentPlayer = "w";
 
 app.use(express.static(path.join(__dirname, "dist")));
 
 io.on("connection", function (socket) {
-  console.log("A new client connected");
+  console.log("A new client connected:", socket.id);
 
-  if (!players.white) {
-    players.white = socket.id;
-    socket.emit("playerRole", "w");
-    console.log("White joined");
-  } else if (!players.black) {
-    players.black = socket.id;
-    socket.emit("playerRole", "b");
-    console.log("Black joined");
-  } else {
-    socket.emit("spectatorRole");
-  }
+  socket.on("joinGame", () => {
+    console.log(`Socket ${socket.id} requesting to join game`);
+
+    // Check if player is already in the game
+    if (players.white === socket.id || players.black === socket.id) {
+      console.log(`Player ${socket.id} already in game`);
+      return;
+    }
+
+    if (!players.white) {
+      players.white = socket.id;
+      console.log("Player joined as White (Waiting)");
+    } else if (!players.black) {
+      players.black = socket.id;
+      console.log("Player joined as Black");
+    } else {
+      console.log("Spectator joined");
+      socket.emit("spectatorRole");
+      socket.emit("boardState", {
+        fen: chess.fen(),
+        history: chess.history(),
+      });
+      return;
+    }
+
+    if (players.white && players.black) {
+      console.log("Both players present. Starting new game...");
+      chess = new Chess(); // Start a fresh game
+      console.log("New Game FEN:", chess.fen());
+
+      io.to(players.white).emit("gameStarted", {
+        role: "w",
+        fen: chess.fen(),
+        history: chess.history(),
+      });
+      io.to(players.black).emit("gameStarted", {
+        role: "b",
+        fen: chess.fen(),
+        history: chess.history(),
+      });
+      console.log("Game Started emitted to players");
+    }
+  });
+
+  socket.on("leaveQueue", () => {
+    if (players.white === socket.id) {
+      delete players.white;
+      console.log("White left queue");
+    } else if (players.black === socket.id) {
+      delete players.black;
+      console.log("Black left queue");
+    }
+  });
 
   socket.on("disconnect", function () {
-    console.log("User disconnected");
+    console.log("User disconnected:", socket.id);
     if (socket.id === players.white) {
       delete players.white;
       io.emit("playerDisconnected", "w");
-      if (players.black)
+      if (players.black) {
         io.to(players.black).emit("gameOver", {
           winner: "b",
           reason: "opponent_disconnected",
         });
+      }
     } else if (socket.id === players.black) {
       delete players.black;
       io.emit("playerDisconnected", "b");
-      if (players.white)
+      if (players.white) {
         io.to(players.white).emit("gameOver", {
           winner: "w",
           reason: "opponent_disconnected",
         });
+      }
     }
   });
 

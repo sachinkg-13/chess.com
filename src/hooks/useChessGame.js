@@ -12,19 +12,36 @@ export function useChessGame() {
   const [history, setHistory] = useState([]);
   const [winner, setWinner] = useState(null); // 'w', 'b', or 'draw'
   const [gameOver, setGameOver] = useState(false);
+  const [gameState, setGameState] = useState("home"); // 'home', 'waiting', 'playing'
+  const [gameOverReason, setGameOverReason] = useState("");
 
   useEffect(() => {
     socket.on("connect", () => {
       console.log("Connected to server");
     });
 
-    socket.on("playerRole", (role) => {
-      setPlayerRole(role);
-      console.log("Assigned role:", role);
-    });
+    // Listen for game start event
+    socket.on(
+      "gameStarted",
+      ({ role, fen: initialFen, history: initialHistory }) => {
+        setGameState("playing");
+        setPlayerRole(role);
+        if (initialFen) {
+          const newGame = new Chess(initialFen);
+          setGame(newGame);
+          setFen(initialFen);
+          setTurn(newGame.turn());
+        }
+        if (initialHistory) setHistory(initialHistory);
+        setGameOver(false);
+        setWinner(null);
+        setGameOverReason("");
+      }
+    );
 
     socket.on("spectatorRole", () => {
       setPlayerRole("spectator");
+      setGameState("playing"); // Spectators join directly if game is active
     });
 
     socket.on("boardState", ({ fen: newFen, history: newHistory }) => {
@@ -39,20 +56,25 @@ export function useChessGame() {
     socket.on("gameOver", ({ winner, reason }) => {
       setGameOver(true);
       setWinner(winner);
-      setGameOverReason(reason); // You might want to add this state
+      setGameOverReason(reason);
+    });
+
+    socket.on("opponentLeft", () => {
+      // Optional: Handle if opponent leaves during waiting or game
+      // For now, gameOver event handles game end, but if in waiting room:
+      // logic is handled by server not sending gameStarted
     });
 
     return () => {
       socket.off("connect");
-      socket.off("playerRole");
+      socket.off("gameStarted");
       socket.off("spectatorRole");
       socket.off("boardState");
       socket.off("move");
       socket.off("gameOver");
+      socket.off("opponentLeft");
     };
   }, []);
-
-  const [gameOverReason, setGameOverReason] = useState("");
 
   const checkGameOver = (chessInstance) => {
     // Client-side check is still good for immediate feedback, but server is authority
@@ -87,6 +109,21 @@ export function useChessGame() {
     [game, playerRole]
   );
 
+  const startGame = () => {
+    setGameState("waiting");
+    socket.emit("joinGame");
+  };
+
+  const leaveGame = () => {
+    socket.emit("leaveQueue"); // Or leave game
+    setGameState("home");
+    setPlayerRole(null);
+    setGame(new Chess());
+    setFen(new Chess().fen());
+    setHistory([]);
+    setGameOver(false);
+  };
+
   const resignGame = () => {
     socket.emit("resign");
   };
@@ -107,5 +144,8 @@ export function useChessGame() {
     gameOverReason,
     resignGame,
     abortGame,
+    gameState,
+    startGame,
+    leaveGame,
   };
 }
