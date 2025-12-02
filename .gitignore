@@ -2,3 +2,5 @@ node_modules/
 backendSetup.yaml
 frontendSetup.yaml
 files/
+dist/
+  
